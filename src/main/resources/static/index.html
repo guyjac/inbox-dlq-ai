@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbox Healing Demo</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1b2430; --muted:#667085; --line:#e3e7ec; --accent:#0b5fff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:18px 28px; background:var(--card); border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:20px; }
+  header p { margin:2px 0 0; color:var(--muted); font-size:14px; }
+  main { padding:20px 28px; display:grid; gap:20px; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
+  @media (max-width:1000px) { main { grid-template-columns:1fr; } }
+  .stack { display:grid; gap:20px; align-content:start; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card h2 { margin:0 0 10px; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  button, select { font:inherit; padding:9px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); }
+  button { cursor:pointer; font-weight:600; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { color:#b42318; }
+  button:disabled { opacity:.5; cursor:wait; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  tr.row { cursor:pointer; }
+  tr.row:hover { background:#f0f4ff; }
+  tr.sel { background:#e7efff; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.02em; white-space:nowrap; }
+  .COMPLETE { background:#dcfae6; color:#067647; }
+  .FAIL { background:#fee4e2; color:#b42318; }
+  .READY_FOR_RETRY { background:#fef0c7; color:#93370d; }
+  .NEEDS_REVIEW { background:#f4e3ff; color:#6f2da8; }
+  .RECEIVED { background:#eef1f5; color:#475467; }
+  pre { margin:0; padding:12px; background:#0f1722; color:#d6e2f0; border-radius:8px; overflow:auto;
+        font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; max-height:360px; white-space:pre-wrap; word-break:break-word; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Inbox pattern + AI healing</h1>
+</header>
+
+<main>
+  <div class="stack">
+    <section class="card">
+      <h2>Actions</h2>
+      <div class="controls">
+        <button class="primary" data-url="/demo/messages/good">Send good message</button>
+        <span>
+          <button data-url="/demo/messages/broken" data-defect="1">Send broken message</button>
+          <select id="defect" aria-label="Defect type">
+            <option value="bad-date">bad date</option>
+            <option value="bad-status">bad status</option>
+            <option value="word-quantity">word quantity</option>
+          </select>
+        </span>
+        <button data-url="/demo/replay">Run replay</button>
+        <button class="primary" data-url="/demo/heal">Run healer</button>
+        <button data-url="/demo/messages/unhealable">Send unhealable message</button>
+        <button class="danger" data-url="/demo/reset">Reset</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Inbox</h2>
+      <table>
+        <thead><tr><th>Message</th><th>Status</th><th>Error</th><th>Heal note</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="empty" class="muted">Inbox is empty.</p>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="card">
+      <h2>Last response</h2>
+      <pre id="response">Nothing sent yet.</pre>
+    </section>
+    <section class="card">
+      <h2>Selected message</h2>
+      <pre id="detail">Click a row to see the full document.</pre>
+    </section>
+  </div>
+</main>
+
+<script>
+  const $ = (selector) => document.querySelector(selector);
+  let records = [];
+  let selected = null;
+
+  async function call(button) {
+    let url = button.dataset.url;
+    if (button.dataset.defect) {
+      url += '?defect=' + encodeURIComponent($('#defect').value);
+    }
+    button.disabled = true;
+    try {
+      const res = await fetch(url, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      $('#response').textContent = 'POST ' + url + '  ->  ' + res.status + '\n\n' + JSON.stringify(body, null, 2);
+      if (body.id && button.dataset.url.includes('/messages/')) selected = body.id;
+      if (button.dataset.url.includes('/reset')) selected = null;
+    } catch (e) {
+      $('#response').textContent = 'Request failed: ' + e;
+    } finally {
+      button.disabled = false;
+      await refresh();
+    }
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch('/demo/messages');
+      records = await res.json();
+    } catch (e) {
+      return;
+    }
+    render();
+  }
+
+  function cell(text) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    return td;
+  }
+
+  function shorten(text, max) {
+    if (!text) return '';
+    return text.length > max ? text.slice(0, max) + '...' : text;
+  }
+
+  function render() {
+    const tbody = $('#rows');
+    tbody.replaceChildren();
+    $('#empty').style.display = records.length ? 'none' : 'block';
+
+    for (const r of records) {
+      const tr = document.createElement('tr');
+      tr.className = 'row' + (r.id === selected ? ' sel' : '');
+      tr.addEventListener('click', () => { selected = r.id; render(); });
+
+      const statusCell = document.createElement('td');
+      const pill = document.createElement('span');
+      pill.className = 'pill ' + r.status;
+      pill.textContent = r.status;
+      statusCell.appendChild(pill);
+
+      tr.append(cell(r.id), statusCell, cell(shorten(r.error, 70)), cell(shorten(r.healNote, 70)));
+      tbody.appendChild(tr);
+    }
+
+    const current = records.find((r) => r.id === selected);
+    $('#detail').textContent = current ? JSON.stringify(current, null, 2) : 'Click a row to see the full document.';
+  }
+
+  document.querySelectorAll('button[data-url]').forEach((b) => b.addEventListener('click', () => call(b)));
+  setInterval(refresh, 2000);
+  refresh();
+</script>
+</body>
+</html>

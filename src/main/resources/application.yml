@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: inbox-healing-demo
+
+# Where the file-backed inbox keeps its documents (one JSON file per message).
+inbox:
+  dir: ./demo-inbox
+
+demo:
+  scheduler:
+    # Off by default: the demo drives heal and replay by hand through REST.
+    # Set to true to replay READY_FOR_RETRY records on a timer, as production would.
+    enabled: false
+    replay-interval-ms: 10000
+
+claude:
+  base-url: https://api.anthropic.com
+  api-key: ${ANTHROPIC_API_KEY:}
+  model: claude-sonnet-5-5
+  max-tokens: 1024
