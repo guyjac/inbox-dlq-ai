@@ -1,6 +1,6 @@
 # Inbox pattern + AI healing demo
 
-A Spring Boot demo of the inbox pattern where a failed message is repaired by Claude and flagged for replay.
+A Claude generated Spring Boot demo of the inbox pattern where a failed message is repaired by Claude and flagged for replay.
 
 ```
 controller/   DemoController, DemoFixtures      REST API, one endpoint per demo beat
@@ -70,11 +70,3 @@ If the Claude call itself fails (no key, network, API error), the record stays `
 ## Running replay on a timer
 
 The demo drives heal and replay by hand. Set `demo.scheduler.enabled=true` to replay `READY_FOR_RETRY` records every `demo.scheduler.replay-interval-ms` (default 10 seconds).
-
-## What changes for production
-
-- **Human review.** Claude proposes; a person approves before anything is flagged `READY_FOR_RETRY`, especially for payments or regulated data. This demo has no approval step and no extra checks on what Claude returns, so the replay's own validation is the only safety net.
-- Replace `FileInbox` with a database table (unique constraint on message id, row locking for claiming) or a document store.
-- Add in-progress states and a staleness rule so concurrent workers never pick up the same record.
-- Payloads are sent to the API. Use synthetic data in the demo and review data handling before real traffic.
-- Track heal success rate, decline rate and cost.
